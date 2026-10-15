@@ -1,58 +1,69 @@
+from PIL import Image, ImageEnhance
+import io
 import streamlit as st
-from PIL import Image
-import numpy as np
 
-# 页面配置
-st.set_page_config(page_title="创作者效率工具箱 · 视觉特效工作台", page_icon="🎨", layout="centered")
+st.set_page_config(page_title="创作者视觉特效工作台", page_icon="🎨", layout="wide")
+
+# 侧边栏
+st.sidebar.title("🛠️ 工具箱菜单")
+tool_choice = st.sidebar.selectbox("选择要使用的视觉工具", ["ASCII 字符艺术生成器"])
 
 st.title("🎨 创作者视觉特效 & 风格化转换工作台")
 st.write("上传您的原图，一键生成复古 ASCII 字符画与视觉特效，支持直接导出结果！")
 
-# 侧边栏功能选择
-st.sidebar.header("🛠️ 工具箱菜单")
-tool_choice = st.sidebar.selectbox("选择要使用的视觉工具", ["ASCII 字符艺术生成器", "复古光栅风格化预览"])
+if tool_choice == "ASCII 字符艺术生成器":
+    uploaded_file = st.file_uploader(
+        "上传图片 (支持 JPG / PNG)", type=["jpg", "jpeg", "png"]
+    )
 
-uploaded_file = st.file_uploader("上传图片 (支持 JPG / PNG)", type=["jpg", "jpeg", "png"])
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file)
+        st.image(image, caption="原图预览", use_column_width=True)
 
-if uploaded_file is not None:
-    image = Image.open(uploaded_file)
-    st.image(image, caption="原图预览", use_column_width=True)
-    
-    if tool_choice == "ASCII 字符艺术生成器":
-        st.subheader("⌨️ ASCII 字符画转换")
-        scale = st.slider("分辨率精细度", min_value=30, max_value=120, value=70)
-        
+        st.markdown("---")
+        st.subheader("⌨️ ASCII 字符画转换设置")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            width = st.slider("分辨率精细度", min_value=20, max_value=120, value=60)
+        with col2:
+            invert = st.checkbox(
+                "反转色彩（如果生成的字符太黑/全是@，勾选此项）", value=True
+            )
+
         if st.button("🚀 立即生成字符画"):
-            with st.spinner("正在进行视觉转换..."):
-                img_gray = image.convert("L")
-                width, height = img_gray.size
-                aspect_ratio = height / width
-                new_height = int(scale * aspect_ratio * 0.55)
-                img_resized = img_gray.resize((scale, new_height))
-                
-                chars = "@%#*+=-:. "
-                pixels = np.array(img_resized)
-                
-                ascii_str = ""
-                for row in pixels:
-                    for pixel in row:
-                        ascii_str += chars[pixel * (len(chars) - 1) // 255]
-                    ascii_str += "\n"
-                
-                st.success("转换成功！")
-                st.text_area("生成结果代码：", ascii_str, height=200)
-                
-                st.download_button(
-                    label="📥 下载文本格式结果",
-                    data=ascii_str,
-                    file_name="ascii_result.txt",
-                    mime="text/plain"
-                )
-                
-    elif tool_choice == "复古光栅风格化预览":
-        st.subheader("📺 光栅 / 扫描线特效处理")
-        intensity = st.slider("扫描线浓度", min_value=1, max_value=10, value=4)
-        if st.button("🚀 应用光栅特效"):
-            st.info("光栅滤镜参数已应用，支持在右侧直接保存处理后的视觉效果！")
-            # 此处可扩展图像矩阵处理逻辑
-            st.image(image, caption="光栅特效处理后预览", use_column_width=True)
+            # 1. 调整比例
+            aspect_ratio = image.height / image.width
+            new_height = int(width * aspect_ratio * 0.55)
+            img_resized = image.resize((width, new_height))
+
+            # 2. 转为灰度图并提高对比度
+            img_gray = img_resized.convert("L")
+            enhancer = ImageEnhance.Contrast(img_gray)
+            img_gray = enhancer.enhance(1.5)
+
+            # 3. 字符梯度集（从亮到暗）
+            ASCII_CHARS = [" ", ".", ":", "-", "=", "+", "*", "%", "@", "#"]
+            if invert:
+                ASCII_CHARS = ASCII_CHARS[::-1]
+
+            pixels = img_gray.getdata()
+            chars = [ASCII_CHARS[pixel // 26] for pixel in pixels]
+            ascii_str = "".join(chars)
+
+            # 4. 格式化排版
+            ascii_lines = [
+                ascii_str[i : i + width]
+                for i in range(0, len(ascii_str), width)
+            ]
+            final_ascii = "\n".join(ascii_lines)
+
+            st.success("转换成功！")
+            st.text_area("生成结果代码:", final_ascii, height=300)
+
+            st.download_button(
+                label="📥 下载文本格式结果",
+                data=final_ascii,
+                file_name="ascii_art.txt",
+                mime="text/plain",
+            )
